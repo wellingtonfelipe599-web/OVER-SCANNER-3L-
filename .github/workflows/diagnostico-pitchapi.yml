@@ -1,0 +1,68 @@
+
+name: Diagnostico PitchAPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Testar acesso a API
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
+          from datetime import datetime, timezone
+
+          key = os.environ.get("FOOTBALL_API_KEY", "")
+          if not key:
+              print("ERRO: segredo FOOTBALL_API_KEY ausente ou vazio.")
+              raise SystemExit(1)
+
+          base = "https://api.pitchapi.dev"
+          headers = {"X-API-KEY": key}
+
+          paths = [
+              "/v1/leagues",
+              "/v1/date/" + datetime.now(timezone.utc).strftime("%Y-%m-%d") + "?status=all"
+          ]
+
+          for path in paths:
+              print("\nTESTE:", path.split("?")[0])
+              req = urllib.request.Request(
+                  base + path, headers=headers, method="GET"
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as response:
+                      data = json.loads(response.read().decode("utf-8"))
+                      print("HTTP:", response.status)
+                      if isinstance(data, dict):
+                          print("Campos recebidos:", list(data.keys())[:15])
+                          items = data.get("data", [])
+                          if isinstance(items, list):
+                              print("Quantidade de registros:", len(items))
+                              if path.startswith("/v1/date/"):
+                                  for match in items[:5]:
+                                      if isinstance(match, dict):
+                                          print("Partida:", json.dumps({
+                                              k: match.get(k) for k in
+                                              ("id", "status", "minute", "home_team",
+                                               "away_team", "home_score", "away_score")
+                                              if k in match
+                                          }, ensure_ascii=False))
+                      else:
+                          print("Formato recebido:", type(data).__name__)
+              except urllib.error.HTTPError as e:
+                  print("HTTP:", e.code)
+                  print("A API recusou ou não atendeu à solicitação.")
+              except Exception as e:
+                  print("Falha de conexão:", type(e).__name__)
+
+          print("\nDiagnóstico básico concluído.")
+          print("Este teste não confirma, sozinho, cobertura de partidas ao vivo.")
+          PY
